@@ -2,26 +2,38 @@ const $=id=>document.getElementById(id);
 let mode='content', draft=null, workbookBytes=null, workbookName='', generation=0;
 function status(message,kind='notice',target='status'){let e=$(target);e.className=kind;e.textContent=message}
 function hideStatus(target='status'){$(target).className='hide'}
-function switchMode(m){mode=m;generation++;draft=null;$('modeContent').classList.toggle('active',m==='content');$('modeTopics').classList.toggle('active',m==='topics');$('contentBrief').classList.toggle('hide',m!=='content');$('topicsBrief').classList.toggle('hide',m!=='topics');$('contentResult').classList.add('hide');$('topicsResult').classList.add('hide');$('draftBadge').classList.add('hide');$('empty').classList.remove('hide');$('generate').textContent=m==='topics'?'Suggest topics':'Generate content';hideStatus();hideStatus('saveStatus')}
+function switchMode(m){mode=m;generation++;draft=null;$('modeContent').classList.toggle('active',m==='content');$('modeTopics').classList.toggle('active',m==='topics');$('contentBrief').classList.toggle('hide',m!=='content');$('topicsBrief').classList.toggle('hide',m!=='topics');$('contentResult').classList.add('hide');$('topicsResult').classList.add('hide');$('draftBadge').classList.add('hide');$('empty').classList.remove('hide');$('generate').textContent=m==='topics'?'Prepare topics prompt':'Prepare content prompt';$('promptArea').classList.add('hide');$('pastedResult').value='';hideStatus();hideStatus('saveStatus')}
 $('modeContent').onclick=()=>switchMode('content');$('modeTopics').onclick=()=>switchMode('topics');
-const savedEndpoint=localStorage.getItem('paxu_generation_endpoint');if(savedEndpoint)$('endpoint').value=savedEndpoint;
-$('endpoint').addEventListener('change',()=>localStorage.setItem('paxu_generation_endpoint',$('endpoint').value.trim()));
 $('trackerFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{let b=new Uint8Array(await f.arrayBuffer());await inspectWorkbook(b);workbookBytes=b;workbookName=f.name;$('trackerStatus').textContent='Loaded '+f.name+' · ready for approval';$('download').classList.add('hide');hideStatus('saveStatus')}catch(err){workbookBytes=null;status('Could not read this tracker: '+err.message,'error','saveStatus')}};
 function brief(){return{pillar:$('pillar').value,format:$('format').value,platform:$('platform').value,audience:$('audience').value,language:$('language').value,topic:$('topic').value.trim(),scope:$('scope').value,context:$('context').value.trim(),theme:$('theme').value.trim(),count:+$('count').value}}
-$('generate').onclick=async()=>{
-  let b=brief(), endpoint=$('endpoint').value.trim().replace(/\/$/,''),code=$('accessCode').value.trim();
-  if(!endpoint.startsWith('https://'))return status('Enter your HTTPS generation endpoint.','warn');
-  if(!code)return status('Enter your team access code.','warn');
-  if(mode==='content'&&!b.topic&&b.pillar==='Any')return status('Choose a category or enter a topic.','warn');
-  let id=++generation;$('generate').disabled=true;status('Generating…');$('contentResult').classList.add('hide');$('topicsResult').classList.add('hide');$('empty').classList.remove('hide');$('draftBadge').classList.add('hide');draft=null;
-  try{
-    let response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','X-App-Code':code},body:JSON.stringify({mode,brief:b})});
-    let data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error||'Generation failed ('+response.status+').');
-    if(id!==generation)return;
-    if(mode==='topics')showTopics(data.result);else showContent(data.result,b);
-    hideStatus();localStorage.setItem('paxu_generation_endpoint',endpoint);
-  }catch(err){if(id===generation)status(err instanceof TypeError?'Could not reach the generation endpoint. Check its URL and allowed site origin.':err.message,'error')}
-  finally{if(id===generation)$('generate').disabled=false}
+const PAXU_RULES = `You are the PAXU® Content Writer. Write for the selected audience as a warm, direct, practical older sibling. Address one person as "bạn", not "các bạn". Use short natural lines, avoid fear or blame. PAXU® offers guidance and information; it is not a recruitment agency, housing provider, or bank. EMMAI® helps people compare options and choose safer steps; it does not promise outcomes. Captions may use icons at the start of lines, with #PAXU and relevant hashtags. Scripts, shot lists, voiceover and on-screen text must have no icons. Do not default to opening a Reels script with a question. Full Reels = script and caption, without a shot list or separate voiceover. Full AI Video/TVC = caption, shot list and voiceover, shots at most 10 seconds. Caption-only or script-only = only that requested component. For news, law, migration rules, wages, procedures, fees and other changing facts: verify current official sources where available, give direct source links in source_note, and avoid unsupported specifics. Topics-only means ideas without finished captions or scripts.`;
+let pendingBrief=null,pendingMode=null;
+function makePrompt(b,m){
+  const common = PAXU_RULES + '\n\nSelected brief: ' + JSON.stringify(b);
+  return m==='topics' ? common + `\n\nSuggest ${b.count} distinct topics only. Return exactly one JSON object: {"topics":[{"topic":"...","pillar":"...","format":"Graphic/Reels/AI Video/News Post","angle":"one concrete sentence","research_need":"what to verify, or none"}]}. No captions, scripts, hooks or voiceover. No markdown code fence.`
+    : common + `\n\nCreate PAXU content. If the topic is blank, choose one concrete topic in the selected category. Return exactly one JSON object with these string keys: "topic", "pillar", "hook", "caption", "script", "shot_list", "voiceover", "on_screen_text", "visual_brief", "cta", "hashtags", "source_note". Use empty strings for unused fields. Respect the selected deliverable and format. No markdown code fence.`;
+}
+$('generate').onclick=()=>{
+  let b=brief();if(mode==='content'&&!b.topic&&b.pillar==='Any')return status('Choose a category or enter a topic.','warn');
+  pendingBrief=b;pendingMode=mode;draft=null;
+  $('preparedPrompt').value=makePrompt(b,mode);$('pastedResult').value='';$('promptArea').classList.remove('hide');
+  $('contentResult').classList.add('hide');$('topicsResult').classList.add('hide');$('empty').classList.remove('hide');$('draftBadge').classList.add('hide');
+  status('Prompt ready. Copy it to ChatGPT, then paste the reply below.');
+};
+$('copyPrompt').onclick=async()=>{
+  let prompt=$('preparedPrompt');
+  try{await navigator.clipboard.writeText(prompt.value);status('Prompt copied. Open ChatGPT and paste it there.')}
+  catch{prompt.focus();prompt.select();status('Prompt selected. Press Ctrl+C, then paste it into ChatGPT.','warn')}
+};
+function parseReply(text){
+  let cleaned=text.trim().replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'').trim();
+  try{return JSON.parse(cleaned)}catch{throw Error('I could not read that reply. In ChatGPT, ask: "Return the same answer as valid JSON only, without a code fence." Then paste its complete reply.')}
+}
+$('showResult').onclick=()=>{
+  if(!pendingBrief)return status('Prepare a prompt first.','warn');
+  let raw=$('pastedResult').value.trim();if(!raw)return status('Paste ChatGPT’s reply first.','warn');
+  try{let result=parseReply(raw);if(pendingMode==='topics')showTopics(result);else{if(typeof result.caption!=='string'||typeof result.script!=='string')throw Error('The reply is missing caption or script fields. Ask ChatGPT to return the requested JSON structure.');showContent(result,pendingBrief)}hideStatus()}
+  catch(err){status(err.message,'error')}
 };
 function showTopics(r){if(!Array.isArray(r.topics))throw Error('Topics response could not be read. Try again.');$('empty').classList.add('hide');let box=$('topicsResult');box.replaceChildren();let h=document.createElement('h3');h.textContent=r.topics.length+' topic ideas';box.append(h);r.topics.forEach((t,i)=>{let d=document.createElement('div');d.className='topic';let strong=document.createElement('strong');strong.textContent=(i+1)+'. '+(t.topic||'Untitled');let meta=document.createElement('small');meta.textContent=[t.pillar,t.format].filter(Boolean).join(' · ');let p=document.createElement('p');p.textContent=t.angle||'';let n=document.createElement('small');n.textContent=t.research_need&&t.research_need!=='none'?'Research: '+t.research_need:'';let pick=document.createElement('button');pick.type='button';pick.className='action secondary';pick.textContent='Use this topic';pick.onclick=()=>{$('topic').value=t.topic||'';if(t.pillar&&[...$('pillar').options].some(o=>o.value===t.pillar))$('pillar').value=t.pillar;if(t.format&&[...$('format').options].some(o=>o.value===t.format))$('format').value=t.format;switchMode('content')};d.append(strong,meta,p,n,document.createElement('br'),pick);box.append(d)});box.classList.remove('hide')}
 function showContent(r,b){draft={...r,topic:b.topic||String(r.topic||'').trim(),pillar:b.pillar==='Any'?(r.pillar||''):b.pillar,format:b.format,platform:b.platform,audience:b.audience,language:b.language,scope:b.scope};let box=$('outputFields');box.replaceChildren();let labels={caption:'Caption',script:'Script',shot_list:'Shot list',voiceover:'Voiceover',on_screen_text:'On-screen text',visual_brief:'Visual brief',cta:'CTA',hashtags:'Hashtags',source_note:'Research note'};let visible=b.scope==='caption'?['caption']:b.scope==='script'?['script']:b.format==='Reels'?['script','caption']:['caption','script','shot_list','voiceover','on_screen_text','visual_brief'];visible.push('cta','hashtags','source_note');for(let key of visible){if(!String(r[key]||'').trim()&&!['caption','script'].includes(key))continue;let wrap=document.createElement('div');wrap.className='field';let lab=document.createElement('label');lab.textContent=labels[key];lab.htmlFor='edit_'+key;let ta=document.createElement('textarea');ta.id='edit_'+key;ta.value=r[key]||'';ta.rows=key==='caption'||key==='script'?8:3;ta.oninput=()=>{draft[key]=ta.value;$('download').classList.add('hide');hideStatus('saveStatus')};wrap.append(lab,ta);box.append(wrap)}$('empty').classList.add('hide');$('contentResult').classList.remove('hide');$('draftBadge').classList.remove('hide');$('draftBadge').textContent='Draft · not saved';hideStatus('saveStatus')}
