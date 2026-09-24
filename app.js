@@ -2,143 +2,26 @@ const $=id=>document.getElementById(id);
 let mode='content', draft=null, workbookBytes=null, workbookName='', generation=0;
 function status(message,kind='notice',target='status'){let e=$(target);e.className=kind;e.textContent=message}
 function hideStatus(target='status'){$(target).className='hide'}
-function switchMode(m){mode=m;generation++;draft=null;$('modeContent').classList.toggle('active',m==='content');$('modeTopics').classList.toggle('active',m==='topics');$('contentBrief').classList.toggle('hide',m!=='content');$('topicsBrief').classList.toggle('hide',m!=='topics');$('contentResult').classList.add('hide');$('topicsResult').classList.add('hide');$('draftBadge').classList.add('hide');$('empty').classList.remove('hide');$('generate').textContent=m==='topics'?'Suggest topics now':'Generate content now';hideStatus();hideStatus('saveStatus')}
+function switchMode(m){mode=m;generation++;draft=null;$('modeContent').classList.toggle('active',m==='content');$('modeTopics').classList.toggle('active',m==='topics');$('contentBrief').classList.toggle('hide',m!=='content');$('topicsBrief').classList.toggle('hide',m!=='topics');$('contentResult').classList.add('hide');$('topicsResult').classList.add('hide');$('draftBadge').classList.add('hide');$('empty').classList.remove('hide');$('generate').textContent=m==='topics'?'Suggest topics':'Generate content';hideStatus();hideStatus('saveStatus')}
 $('modeContent').onclick=()=>switchMode('content');$('modeTopics').onclick=()=>switchMode('topics');
+const savedEndpoint=localStorage.getItem('paxu_generation_endpoint');if(savedEndpoint)$('endpoint').value=savedEndpoint;
+$('endpoint').addEventListener('change',()=>localStorage.setItem('paxu_generation_endpoint',$('endpoint').value.trim()));
 $('trackerFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{let b=new Uint8Array(await f.arrayBuffer());await inspectWorkbook(b);workbookBytes=b;workbookName=f.name;$('trackerStatus').textContent='Loaded '+f.name+' · ready for approval';$('download').classList.add('hide');hideStatus('saveStatus')}catch(err){workbookBytes=null;status('Could not read this tracker: '+err.message,'error','saveStatus')}};
 function brief(){return{pillar:$('pillar').value,format:$('format').value,platform:$('platform').value,audience:$('audience').value,language:$('language').value,topic:$('topic').value.trim(),scope:$('scope').value,context:$('context').value.trim(),theme:$('theme').value.trim(),count:+$('count').value}}
-const PILLARS = [
-  'Scam Prevention & Awareness', 'Safe Migration Information & Tips',
-  'Safe Job-Seeking Tips', 'Learning Tips & Student Life',
-  'Financial Management', 'Travel & Holiday Safety Tips'
-];
-const IDEAS = {
-  [PILLARS[0]]: [
-    ['Tin nhắn mượn tiền từ tài khoản người quen', 'Kiểm tra người gửi qua một kênh khác trước khi chuyển tiền'],
-    ['Phòng trọ đẹp nhưng yêu cầu đặt cọc ngay', 'Kiểm tra địa chỉ và người cho thuê trước khi chuyển cọc'],
-    ['Lời mời làm thêm yêu cầu gửi CCCD', 'Xác minh nhà tuyển dụng và mục đích thu thập giấy tờ'],
-    ['Tài khoản giả danh cơ quan chức năng', 'Không làm theo cuộc gọi gây áp lực; tự tìm kênh liên hệ chính thức'],
-    ['Lời mời tuyển mẫu ảnh thu phí trước', 'Kiểm tra đơn vị tuyển và điều kiện thanh toán'],
-    ['Người quen qua mạng nhờ chuyển tiền gấp', 'Tạm dừng và xác minh câu chuyện qua kênh độc lập'],
-    ['Đường link nhận quà yêu cầu đăng nhập', 'Kiểm tra tên miền trước khi nhập tài khoản']
-  ],
-  [PILLARS[1]]: [
-    ['Ba việc cần kiểm tra trước khi nhận lời đi làm xa', 'Đối chiếu lộ trình, giấy tờ và chi phí'],
-    ['Chuẩn bị giấy tờ trước khi đi học ở nước ngoài', 'Lập danh sách và sao lưu hồ sơ quan trọng'],
-    ['Một lời hứa về visa nghe quá dễ', 'Kiểm tra yêu cầu trên trang chính thức'],
-    ['Dự trù chi phí trước khi chuyển nơi sống', 'So sánh tiền nhà, đi lại và khoản dự phòng'],
-    ['Tìm hỗ trợ khi gặp khó khăn ở nước ngoài', 'Lưu đầu mối hỗ trợ và thông tin liên hệ trước khi đi'],
-    ['Đọc hợp đồng trước khi làm việc ở nước ngoài', 'Đối chiếu điều khoản với thông tin đã được tư vấn']
-  ],
-  [PILLARS[2]]: [
-    ['Đọc tin tuyển dụng trước khi nộp hồ sơ', 'Kiểm tra tên công ty, công việc và kênh liên hệ'],
-    ['Nhà tuyển dụng yêu cầu nộp tiền trước', 'Xác minh lý do thu phí và đừng vội chuyển tiền'],
-    ['Hợp đồng thử việc có gì cần đọc kỹ', 'Xem công việc, lương, thời gian và điều kiện'],
-    ['Phỏng vấn qua mạng nhưng không rõ công ty', 'Tìm thông tin công ty qua kênh độc lập'],
-    ['Lời mời việc nhẹ lương cao', 'Kiểm tra yêu cầu công việc và điều kiện thực tế'],
-    ['Bảo vệ thông tin cá nhân khi tìm việc', 'Chỉ chia sẻ giấy tờ khi biết rõ bên nhận']
-  ],
-  [PILLARS[3]]: [
-    ['Lịch học bận rộn và một việc quan trọng mỗi ngày', 'Chọn một mục tiêu nhỏ có thể hoàn thành'],
-    ['Mới lên thành phố học và chưa quen nhịp sống', 'Chuẩn bị thông tin nhà ở, đi lại và người hỗ trợ'],
-    ['Kiểm tra học bổng có thật hay không', 'Đối chiếu thông báo với trang chính thức của đơn vị cấp'],
-    ['Tìm nhóm học online an toàn', 'Kiểm tra người quản lý và điều kiện trước khi đóng phí'],
-    ['Học kỹ năng mới mà không quá tải', 'Chọn một nguồn đáng tin và luyện tập đều đặn'],
-    ['Khi bạn cần hỏi giúp đỡ ở môi trường mới', 'Xác định người và kênh hỗ trợ phù hợp']
-  ],
-  [PILLARS[4]]: [
-    ['Ba khoản cần tính trước khi nhận lương', 'Ghi khoản thiết yếu, dự phòng và chi linh hoạt'],
-    ['Tiết kiệm cho chuyến đi sắp tới', 'Chia mục tiêu thành các khoản nhỏ'],
-    ['Mua sắm theo cảm xúc cuối tháng', 'Tạm dừng để xem lại ngân sách'],
-    ['Chi phí ẩn khi chuyển nhà', 'Liệt kê đặt cọc, đi lại và vật dụng cần thiết'],
-    ['Theo dõi khoản đăng ký tự động', 'Xem lại dịch vụ còn dùng và ngày gia hạn'],
-    ['Quỹ dự phòng bắt đầu từ đâu', 'Chọn một khoản phù hợp với thu nhập của mình']
-  ],
-  [PILLARS[5]]: [
-    ['Chuẩn bị trước chuyến đi xa', 'Kiểm tra giấy tờ, phương tiện và liên lạc'],
-    ['Đặt phòng online trước kỳ nghỉ', 'Đối chiếu địa chỉ và chính sách qua kênh chính thức'],
-    ['Giữ liên lạc khi đi một mình', 'Chia sẻ lịch trình với người tin cậy'],
-    ['Lạc đường ở nơi mới', 'Chuẩn bị bản đồ và đầu mối hỗ trợ'],
-    ['Bảo vệ giấy tờ khi di chuyển', 'Sao lưu và cất bản chính ở nơi an toàn'],
-    ['Kế hoạch dự phòng khi lịch trình thay đổi', 'Lưu lựa chọn đi lại và liên hệ cần thiết']
-  ]
-};
-const COPY = {
-  [PILLARS[0]]: {
-    vi: ['🚨 Một lời mời hấp dẫn vẫn cần được kiểm tra kỹ.', 'Tạm dừng trước khi chuyển tiền hoặc gửi giấy tờ.', 'Xác minh người gửi qua kênh liên hệ bạn tự tìm được.', 'Giữ lại tin nhắn và thông tin giao dịch nếu có điều bất thường.', 'Kiểm tra lại trước khi quyết định nhé.'],
-    en: ['🚨 An appealing offer still deserves a careful check.', 'Pause before sending money or personal documents.', 'Verify the sender through a contact channel you found yourself.', 'Keep the messages and transaction details if something feels wrong.', 'Take a moment to check before deciding.']
-  },
-  [PILLARS[1]]: {
-    vi: ['🌍 Chuẩn bị đi xa sẽ dễ hơn khi bạn kiểm tra từng bước.', 'Đối chiếu yêu cầu giấy tờ với nguồn chính thức.', 'Tính cả chi phí sinh hoạt và khoản dự phòng.', 'Lưu bản sao thông tin quan trọng và kênh hỗ trợ.', 'Chọn bước tiếp theo khi bạn đã có đủ thông tin.'],
-    en: ['🌍 Preparing to move is easier when you check each step.', 'Compare document requirements with official sources.', 'Include living costs and an emergency reserve in your plan.', 'Keep copies of key information and support contacts.', 'Choose your next step once you have enough information.']
-  },
-  [PILLARS[2]]: {
-    vi: ['📄 Một tin tuyển dụng rõ ràng sẽ chịu được vài câu hỏi.', 'Kiểm tra tên, địa chỉ và kênh liên hệ của đơn vị tuyển dụng.', 'Đọc kỹ công việc, thu nhập và điều kiện trước khi đồng ý.', 'Đừng vội gửi giấy tờ hoặc chuyển phí khi thông tin chưa rõ.', 'Xác minh trước, rồi hãy quyết định nộp hồ sơ.'],
-    en: ['📄 A clear job offer can stand up to a few questions.', 'Check the employer’s name, address and contact channels.', 'Read the role, pay and conditions before agreeing.', 'Wait before sending documents or fees if details are unclear.', 'Verify the offer before applying.']
-  },
-  [PILLARS[3]]: {
-    vi: ['📚 Một bước nhỏ hôm nay có thể giúp bạn bớt rối ngày mai.', 'Chọn một việc quan trọng để bắt đầu.', 'Tìm thông tin từ kênh đáng tin và ghi lại điều còn chưa rõ.', 'Hỏi người phù hợp khi bạn cần thêm góc nhìn.', 'Bắt đầu bằng việc bạn có thể làm ngay hôm nay.'],
-    en: ['📚 One small step today can make tomorrow feel clearer.', 'Pick one useful task to start with.', 'Use a reliable source and note what remains unclear.', 'Ask someone you trust when you need another view.', 'Begin with one action you can take today.']
-  },
-  [PILLARS[4]]: {
-    vi: ['💰 Nhìn rõ từng khoản giúp bạn chủ động hơn với tiền của mình.', 'Ghi lại những khoản cần chi trước.', 'Để riêng một khoản dự phòng phù hợp với hoàn cảnh của bạn.', 'Xem lại khoản chi linh hoạt trước khi mua thêm.', 'Thử bắt đầu bằng việc theo dõi chi tiêu tuần này.'],
-    en: ['💰 Seeing each expense helps you make your own money choices.', 'Write down the costs you need to cover first.', 'Set aside a reserve that suits your situation.', 'Review flexible spending before buying more.', 'Start by tracking this week’s spending.']
-  },
-  [PILLARS[5]]: {
-    vi: ['✈️ Một chuyến đi nhẹ đầu bắt đầu từ vài bước chuẩn bị.', 'Kiểm tra giấy tờ và cách di chuyển.', 'Lưu địa chỉ, thông tin đặt chỗ và số liên lạc cần thiết.', 'Chia sẻ lịch trình với người bạn tin cậy.', 'Dành ít phút kiểm tra lại trước khi lên đường.'],
-    en: ['✈️ A smoother trip starts with a few checks.', 'Check your documents and travel plan.', 'Save your address, booking details and useful contacts.', 'Share your itinerary with someone you trust.', 'Take a final look before leaving.']
-  }
-};
-const TAGS = {
-  [PILLARS[0]]:'#canhgiacluadao', [PILLARS[1]]:'#safemigration',
-  [PILLARS[2]]:'#timviecantoan', [PILLARS[3]]:'#kynangmoingay',
-  [PILLARS[4]]:'#chitieuthongminh', [PILLARS[5]]:'#antoankhidulich'
-};
-let variation=0;
-function choosePillar(b){
-  if(b.pillar!=='Any')return b.pillar;
-  let q=(b.topic||'').toLocaleLowerCase('vi');
-  let clues=[['lừa|giả danh|mạo danh|lừa đảo|đặt cọc',PILLARS[0]],['visa|xuất cảnh|nước ngoài|di cư',PILLARS[1]],['tuyển dụng|tìm việc|phỏng vấn|hợp đồng',PILLARS[2]],['học|sinh viên|kỹ năng|học bổng',PILLARS[3]],['tiết kiệm|chi tiêu|ngân sách|tiền',PILLARS[4]],['du lịch|chuyến đi|đi lại|đặt phòng',PILLARS[5]]];
-  return clues.find(([pattern])=>new RegExp(pattern,'i').test(q))?.[1]||PILLARS[variation%PILLARS.length];
-}
-function topicIdeas(b){
-  let pillars=b.pillar==='Any'?PILLARS:[b.pillar];
-  let pool=[];let max=Math.max(...pillars.map(p=>IDEAS[p].length));for(let i=0;i<max;i++)for(let p of pillars){let item=IDEAS[p][i];if(item)pool.push({topic:item[0],pillar:p,format:b.format==='TVC'?'AI Video':b.format,angle:item[1],research_need:'Verify any topic-specific current claim with an official source'})}if(pool.length<b.count){let originals=[...pool],frames=['3 bước kiểm tra: ','Trước khi quyết định: ','Điều nên hỏi về: '];for(let frame of frames){for(let item of originals){if(pool.length>=b.count)break;pool.push({...item,topic:frame+item.topic})}}}
-  let theme=(b.theme||'').toLocaleLowerCase('vi').trim();
-  if(theme){let hits=pool.filter(x=>(x.topic+' '+x.angle).toLocaleLowerCase('vi').includes(theme));pool=[...hits,...pool.filter(x=>!hits.includes(x))]}
-  let offset=variation++%pool.length;pool=[...pool.slice(offset),...pool.slice(0,offset)];
-  return {topics:pool.slice(0,b.count)};
-}
-function makeDraft(b){
-  variation++;
-  let pillar=choosePillar(b),item=IDEAS[pillar][variation%IDEAS[pillar].length];
-  let topic=b.topic||item[0],lang=b.language,format=b.format;
-  let v=COPY[pillar].vi,e=COPY[pillar].en;
-  let viCaption=[`${v[0]}\n${topic}.`, ...v.slice(1,4).map((x,i)=>['🔍 ','📌 ','🛡️ '][i]+x),v[4],`#PAXU #vungbuoctuonglai ${TAGS[pillar]}`].join('\n');
-  let enCaption=[`${e[0]}\n${topic}.`,...e.slice(1,4).map((x,i)=>['🔍 ','📌 ','🛡️ '][i]+x),e[4],`#PAXU #vungbuoctuonglai ${TAGS[pillar]}`].join('\n');
-  let viScript=[`Có một việc cần kiểm tra trước khi quyết định: ${topic}.`,...v.slice(1,4).map(x=>x.replace(/^[^\p{L}]*/u,'')),v[4]].join('\n');
-  let enScript=[`Before you decide, take a closer look at this: ${topic}.`,...e.slice(1,4).map(x=>x.replace(/^[^\p{L}]*/u,'')),e[4]].join('\n');
-  let caption=lang==='English'?enCaption:lang==='Bilingual'?viCaption+'\n\n'+enCaption:viCaption;
-  let script=lang==='English'?enScript:lang==='Bilingual'?viScript+'\n\nEnglish version:\n'+enScript:viScript;
-  let voLines=lang==='English'?e: v;
-  let shotList=voLines.map((line,i)=>`Shot ${i+1} (0–10s): ${i===0?'Person notices the situation':i===4?'Person takes a considered next step':'Person checks one piece of information'}; voiceover: ${line.replace(/^[^\p{L}]*/u,'')}`).join('\n');
-  let voiceover=voLines.map(line=>line.replace(/^[^\p{L}]*/u,'')).join('\n');
-  let result={topic,pillar,hook:voLines[0],caption,script:'',shot_list:'',voiceover:'',on_screen_text:'',visual_brief:'',cta:voLines[4],hashtags:`#PAXU #vungbuoctuonglai ${TAGS[pillar]}`,source_note:'Starter draft made from evergreen writing patterns. Verify any topic-specific current claim and source before publishing.'};
-  if(b.scope==='caption')return result;
-  if(b.scope==='script'){result.caption='';result.script=script;return result}
-  if(format==='Reels'){result.script=script;result.caption=caption.split('\n').slice(0,2).join('\n')+'\n'+voLines[4]+'\n'+result.hashtags}
-  else if(format==='AI Video'||format==='TVC'){result.shot_list=shotList;result.voiceover=voiceover;result.caption=caption.split('\n').slice(0,2).join('\n')+'\n'+result.hashtags}
-  else if(format==='Graphic'){result.visual_brief=`Main message: ${topic}. Show three concise checks in the visual; keep the caption as supporting context.`}
-  else if(format==='News Post'){result.source_note='News format selected. This draft does not claim a specific event happened. Add a current, verified event and a direct official source before publishing.'}
-  return result;
-}
-$('generate').onclick=()=>{
-  const b=brief();
+$('generate').onclick=async()=>{
+  let b=brief(), endpoint=$('endpoint').value.trim().replace(/\/$/,''),code=$('accessCode').value.trim();
+  if(!endpoint.startsWith('https://'))return status('Enter your HTTPS generation endpoint.','warn');
+  if(!code)return status('Enter your team access code.','warn');
   if(mode==='content'&&!b.topic&&b.pillar==='Any')return status('Choose a category or enter a topic.','warn');
+  let id=++generation;$('generate').disabled=true;status('Generating…');$('contentResult').classList.add('hide');$('topicsResult').classList.add('hide');$('empty').classList.remove('hide');$('draftBadge').classList.add('hide');draft=null;
   try{
-    if(mode==='topics')showTopics(topicIdeas(b));
-    else showContent(makeDraft(b),b);
-    status(mode==='topics'?'Topic ideas ready. Choose one to create a draft.':'Starter draft ready. Edit and verify it before approval.');
-  }catch(err){status('Could not prepare a draft: '+err.message,'error')}
+    let response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','X-App-Code':code},body:JSON.stringify({mode,brief:b})});
+    let data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error||'Generation failed ('+response.status+').');
+    if(id!==generation)return;
+    if(mode==='topics')showTopics(data.result);else showContent(data.result,b);
+    hideStatus();localStorage.setItem('paxu_generation_endpoint',endpoint);
+  }catch(err){if(id===generation)status(err instanceof TypeError?'Could not reach the generation endpoint. Check its URL and allowed site origin.':err.message,'error')}
+  finally{if(id===generation)$('generate').disabled=false}
 };
 function showTopics(r){if(!Array.isArray(r.topics))throw Error('Topics response could not be read. Try again.');$('empty').classList.add('hide');let box=$('topicsResult');box.replaceChildren();let h=document.createElement('h3');h.textContent=r.topics.length+' topic ideas';box.append(h);r.topics.forEach((t,i)=>{let d=document.createElement('div');d.className='topic';let strong=document.createElement('strong');strong.textContent=(i+1)+'. '+(t.topic||'Untitled');let meta=document.createElement('small');meta.textContent=[t.pillar,t.format].filter(Boolean).join(' · ');let p=document.createElement('p');p.textContent=t.angle||'';let n=document.createElement('small');n.textContent=t.research_need&&t.research_need!=='none'?'Research: '+t.research_need:'';let pick=document.createElement('button');pick.type='button';pick.className='action secondary';pick.textContent='Use this topic';pick.onclick=()=>{$('topic').value=t.topic||'';if(t.pillar&&[...$('pillar').options].some(o=>o.value===t.pillar))$('pillar').value=t.pillar;if(t.format&&[...$('format').options].some(o=>o.value===t.format))$('format').value=t.format;switchMode('content')};d.append(strong,meta,p,n,document.createElement('br'),pick);box.append(d)});box.classList.remove('hide')}
 function showContent(r,b){draft={...r,topic:b.topic||String(r.topic||'').trim(),pillar:b.pillar==='Any'?(r.pillar||''):b.pillar,format:b.format,platform:b.platform,audience:b.audience,language:b.language,scope:b.scope};let box=$('outputFields');box.replaceChildren();let labels={caption:'Caption',script:'Script',shot_list:'Shot list',voiceover:'Voiceover',on_screen_text:'On-screen text',visual_brief:'Visual brief',cta:'CTA',hashtags:'Hashtags',source_note:'Research note'};let visible=b.scope==='caption'?['caption']:b.scope==='script'?['script']:b.format==='Reels'?['script','caption']:['caption','script','shot_list','voiceover','on_screen_text','visual_brief'];visible.push('cta','hashtags','source_note');for(let key of visible){if(!String(r[key]||'').trim()&&!['caption','script'].includes(key))continue;let wrap=document.createElement('div');wrap.className='field';let lab=document.createElement('label');lab.textContent=labels[key];lab.htmlFor='edit_'+key;let ta=document.createElement('textarea');ta.id='edit_'+key;ta.value=r[key]||'';ta.rows=key==='caption'||key==='script'?8:3;ta.oninput=()=>{draft[key]=ta.value;$('download').classList.add('hide');hideStatus('saveStatus')};wrap.append(lab,ta);box.append(wrap)}$('empty').classList.add('hide');$('contentResult').classList.remove('hide');$('draftBadge').classList.remove('hide');$('draftBadge').textContent='Draft · not saved';hideStatus('saveStatus')}
